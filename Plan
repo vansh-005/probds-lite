@@ -1,0 +1,141 @@
+# ProbDS‑Lite – Team Project Plan
+
+---
+
+## 1. Project Snapshot
+
+**What we’re building:**  *ProbDS‑Lite* is a compact C++20 micro‑library that exposes three probabilistic data structures—Bloom Filter, Count‑Min Sketch, and HyperLogLog—through a single polymorphic interface.  It enables ultra‑fast “seen?”, “how many?”, and “how many unique?” queries on billion‑element streams while consuming < 2 kB RAM.
+
+**Why it matters:**  Real‑time analytics, caching, phishing detectors, and CDN edge services all need approximate answers at scale.  Re‑implementing these classics showcases our algorithms knowledge, modern C++ design, and rigorous engineering practice in <1 kLoC—perfect resume material and a strong talking point in interviews.
+
+---
+
+## 2. Objectives & Success Metrics
+
+| Goal         | Success Metric                                                                                     |
+| ------------ | -------------------------------------------------------------------------------------------------- |
+| Correctness  | ≥ 98 % unit‑test coverage; false‑positive rate within 1 % of theoretical bound                     |
+| Performance  | ≥ 1 GB/s insert throughput (Bloom); CMS query latency < 200 ns; HLL error ≤ 2 % on 10 M uniques    |
+| Code Quality | Passes `clang‑tidy`, sanitizers, and MISRA‑lite checklist; RAII + guideline‑support‑library idioms |
+| Portability  | Builds on Linux (GCC 13), macOS (Clang 16), Windows (MSVC 2022) via single CMake config            |
+| Developer DX | One‑command build (`cmake -S . -B build && cmake --build`) and one‑command test (`ctest`)          |
+
+---
+
+## 3. Core Functionality
+
+1. **Abstract Interface (`ApproxStructure`)**  – `add()`, `query()`, `merge()`, `errorRate()`.
+2. **Concrete Structures**
+
+   * **BloomFilter**  – k‑hash double‑hashing, bit‑vector backend.
+   * **CountMinSketch** – 2‑D counter array, frequency estimation.
+   * **HyperLogLog‑14** – 16 384 registers, small‑range bias correction, mergeable.
+3. **CLI Demo** – Reads newline‑delimited keys, lets user pick structure & parameters, prints RAM, throughput, error.
+4. **Benchmark Harness** – Google‑Benchmark suite wired into CTest.
+5. **Optional Parallel Add** – `add_parallel()` using `std::jthread` + atomics.
+
+---
+
+## 4. Technical Stack & Tooling
+
+| Layer           | Choice                       | Rationale                                 |
+| --------------- | ---------------------------- | ----------------------------------------- |
+| Build           | **CMake ≥ 3.26**             | Cross‑platform, CI friendly               |
+| Lang Std        | **C++20**                    | Concepts, `std::span`, `std::countl_zero` |
+| Testing         | **Catch2 v3**                | Header‑only, expressive assertions        |
+| Benchmark       | **Google Benchmark**         | Robust timing, statistically sound        |
+| Hashes          | **MurmurHash3 & FNV‑1a**     | Fast non‑crypto hashing                   |
+| Docs            | **Doxygen + Graphviz**       | Auto‑generated API docs                   |
+| CI              | **GitHub Actions**           | Build matrix, formatter & sanitizer gates |
+| Static Analysis | **clang‑tidy**, **cppcheck** | Early defect detection                    |
+
+---
+
+## 5. Team Roles (provisional)
+
+| Name      | Primary Responsibility                              | Backup For  |
+| --------- | --------------------------------------------------- | ----------- |
+| **Vansh** | CMS implementation, CI pipeline, README perf graphs | BloomFilter |
+| **Dev A** | BloomFilter core & tests                            | HLL         |
+| **Dev B** | HyperLogLog + merge logic                           | CLI tool    |
+| **Dev C** | Benchmark harness, sanitizer profile                | Docs        |
+| **Dev D** | Doxygen & architecture diagram                      | CMS         |
+
+> *Pair‑program on tricky bits; reviewers rotate weekly.*
+
+---
+
+## 6. Milestones & Timeline (calendar weeks)
+
+| Week              | Deliverables                                                      | Owner(s)      |
+| ----------------- | ----------------------------------------------------------------- | ------------- |
+| **W‑1 (Fri‑Sun)** | Repo skeleton, `ApproxStructure` base, CMake builds on all 3 OSes | Vansh + Dev A |
+| **W0 (Sat)**      | BloomFilter core, 3 sanity tests                                  | Dev A         |
+| **W0 (Sun)**      | CountMinSketch core, tests (edge cases)                           | Vansh         |
+| **W1 (Sat)**      | HyperLogLog core + merge; small‑range correction                  | Dev B         |
+| **W1 (Sun)**      | CLI MVP; parse flags, run against sample file                     | Dev B         |
+| **W2 (Sat)**      | Google‑Benchmark suite; `BM_Insert*`, `BM_Query*`                 | Dev C         |
+| **W2 (Sun)**      | Docs pass #1; Doxygen site pushed                                 | Dev D         |
+| **W3 (Sat)**      | Parallel `add_parallel()` & atomics patch                         | Vansh + Dev C |
+| **W3 (Sun)**      | CI green on sanitizer + static analysis                           | Vansh         |
+| **W4**            | Code freeze, tag `v1.0`, package release                          | All           |
+
+---
+
+## 7. Development Workflow
+
+1. **Branch naming:** `feature/<component>`  → PR → 2‑reviewer approval.
+2. **Pre‑commit hooks:** `clang‑format`, `cmake‑format`, `git clang‑tidy` scan.
+3. **CI stages:** build‑matrix (GCC/Clang/MSVC) → tests → benchmarks smoke → upload coverage.
+4. **Versioning:** SemVer; each structure reaching correctness pushes minor (`0.x`).
+
+---
+
+## 8. Testing & Benchmarking Strategy
+
+* **Unit tests:** edge cases (zero elements, heavy duplicates), statistical accuracy (simulate 1 M keys, compare ε).
+* **Property tests:** random streams ± merges for HLL.
+* **Benchmarks:** warm‑up + 50 iterations; median throughput reported.
+* **Sanitizers:** Address & Undefined on Debug; run nightly.
+
+---
+
+## 9. Documentation & Deliverables
+
+* `README.md` – build steps, quick demo GIF, perf table.
+* `/docs/` – Doxygen HTML + architecture diagram.
+* `benchmark_report.csv` – exported numbers for plotting.
+* Release artifact: `probds-lite-<ver>.zip` header‑only + examples.
+
+---
+
+## 10. Risks & Mitigation
+
+| Risk                               | Trigger                          | Mitigation                                                                          |
+| ---------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------- |
+| Hash collision bias inflates error | Poor hash mix                    | Provide two independent 64‑bit hashes; add compile‑time assert on ratio of set bits |
+| Over‑engineering templates         | Compile times explode            | Template only on word size + hash count; keep impl in `.hpp` guarded by `#ifdef`    |
+| Windows MSVC quirks                | `std::countl_zero` not constexpr | Provide fallback inline function when `__cpp_lib_bitops` missing                    |
+| Team bandwidth crunch              | Uni deadlines clash              | Scope control—parallel `add()` & fancy CLI can slip to v1.1                         |
+
+---
+
+## 11. Motivation Talking Points
+
+> “We built ProbDS‑Lite because modern backend systems need approximate analytics in microwatt budgets.  Rolling our own keeps the math crystal‑clear and lets us flex algorithmic chops.  The small code‑footprint forced disciplined OOP and extensive testing—skills we’ll carry into production roles.”
+
+---
+
+## 12. Definition of Done (DoD)
+
+* [ ] All unit tests & sanitizers pass at `-O2` on Linux, macOS, Windows.
+* [ ] Benchmarks meet stated targets.
+* [ ] API frozen & documented.
+* [ ] README & docs deployed.
+* [ ] CI pipelines green.
+
+Once these boxes are checked, *ProbDS‑Lite v1.0* ships!  ✨
+
+---
+
+*Last updated: 18 Jun 2025 – keep this document in sync with Git commits.*
